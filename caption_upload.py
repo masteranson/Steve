@@ -1,28 +1,34 @@
-import requests
-import time
-import subprocess
-import json
-import openai
 import os
+import re
+import time
+import signal
+import requests
+import subprocess
+
 from openai import OpenAI
 from pydub import AudioSegment
 from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
- 
+
 counter_file = 'counter.txt'
 
 # Zoom Closed Captioning API URL and Parameters
+zoom_link = "https://wmcc.zoom.us/closedcaption?id=94993538458&ns=QW1vZ2ggSm9zaGkncyBab29tIE1lZXRpbmc&expire=108000&sparams=id%2Cns%2Cexpire&signature=ZwTwDgxMhlrAP2Hl12fl3uBbf_QluSlCSfLVVEAVHmY.AG.hX8MelrhKsM80HVmGvvzxvMAGH7sPcj26s5KFvsOq9S5UFDUOoHCBQtN1v5sGP3lzEZiPSYi14Wbx62GNKCb0IpHnNU57qmbEvSVk85LSXCfobxyJXTf8jW7afcmiwEXCnrPhIQj9mp7OH56PQXAF1UbR-3SaMxoKAuJ149T3-TvZwaUZFzZvrxiLHrcJLGFWr3U.YpQskyk6f4xt9XgZoB0RLw.WeE13Zyit8QBt1Ze"
 zoom_cc_url = "https://wmcc.zoom.us/closedcaption"
-meeting_id = "3292661088"  # Meeting ID
-expire = "108000"  # Expire value
 lang = "en-US"  # Language code
 
-#This gets updated at every new meeeting from myself
-signature = "yXTYLaL6AgK9v9u84sLg7b4txOIKjMG_Mp49UEeRQTU.AG.U7VyvTmHYNLBl5BGAj0xP36wsixdZL_Tb3YU-cGCxlwE6Tp66Cg98Y1XF4_2Ffzs9csitlmLU5TtTjMcUA8LzkmnbZkVK0z7bzAHBonhGTgEXQ2b7hDQ-gqP_tvGpEkM-oQOkOv-qkxc9qQcrKBITj5RHqwgCps3F3mxvMl_aPrjOpfw0Bjj1PL7w8FleSngF0KQHUGQBjk.mW4zXwM6qP1oz2aVmWoX8w.zNPdltVUFClwLZUt"
-ns = "WXVuZyBDaGFrIEFuc29uIFRzYW5nJ3MgUGVyc29u"  
+# parse the zoom link for the id, ns, signature, and expire
 
+find_id = re.search(r'id=(\d+)', zoom_link)
+meeting_id = find_id.group(1)
+find_ns = re.search(r'ns=(\w+)', zoom_link)
+ns = find_ns.group(1)
+find_expire = re.search(r'expire=(\d+)', zoom_link)
+expire = find_expire.group(1)
+find_signature = re.search(r'signature=(\w+)', zoom_link)
+signature = find_signature.group(1)
 
 
 # Converts AAC file to WAV
@@ -56,7 +62,8 @@ def send_caption(seq, caption):
 
 
 client = OpenAI(api_key = OPENAI_API_KEY)
-os.remove('output.aac')
+if os.path.exists('output.aac'):
+    os.remove('output.aac')
 
 duration = 10 #Recording time
 
@@ -66,7 +73,7 @@ command = [
     '-i', 'rtmp://localhost/live/ZOOM', 
     '-vn', 
     '-acodec', 'copy', 
-    'output69.aac'
+    'output.aac'
 ]
 
 # Start the FFmpeg process
