@@ -13,6 +13,18 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
  
 counter_file = 'counter.txt'
 
+# Zoom Closed Captioning API URL and Parameters
+zoom_cc_url = "https://wmcc.zoom.us/closedcaption"
+meeting_id = "3292661088"  # Meeting ID
+expire = "108000"  # Expire value
+lang = "en-US"  # Language code
+
+#This gets updated at every new meeeting from myself
+signature = "yXTYLaL6AgK9v9u84sLg7b4txOIKjMG_Mp49UEeRQTU.AG.U7VyvTmHYNLBl5BGAj0xP36wsixdZL_Tb3YU-cGCxlwE6Tp66Cg98Y1XF4_2Ffzs9csitlmLU5TtTjMcUA8LzkmnbZkVK0z7bzAHBonhGTgEXQ2b7hDQ-gqP_tvGpEkM-oQOkOv-qkxc9qQcrKBITj5RHqwgCps3F3mxvMl_aPrjOpfw0Bjj1PL7w8FleSngF0KQHUGQBjk.mW4zXwM6qP1oz2aVmWoX8w.zNPdltVUFClwLZUt"
+ns = "WXVuZyBDaGFrIEFuc29uIFRzYW5nJ3MgUGVyc29u"  
+
+
+
 # Converts AAC file to WAV
 def convert_aac_to_wav(aac_file_path, wav_file_path):
 
@@ -33,29 +45,42 @@ def write_counter(file_path, count):
     with open(file_path, 'w') as file:
         file.write(str(count))
 
+# Function to send caption to Zoom
+def send_caption(seq, caption):
+    url = f"{zoom_cc_url}?id={meeting_id}&ns={ns}&expire={expire}&sparams=id%2Cns%2Cexpire&signature={signature}&seq={seq}&lang={lang}"
+    headers = {
+        'Content-Type': 'text/plain',
+    }
+    response = requests.post(url, headers=headers, data=caption.encode('utf-8'))
+    return response
+
+
 client = OpenAI(api_key = OPENAI_API_KEY)
 os.remove('output.aac')
+
+duration = 10 #Recording time
+
 # Define the FFmpeg command
 command = [
     'ffmpeg', 
     '-i', 'rtmp://localhost/live/ZOOM', 
-    '-t', '10', 
     '-vn', 
     '-acodec', 'copy', 
-    'output.aac'
+    'output69.aac'
 ]
 
 # Start the FFmpeg process
 process = subprocess.Popen(command)
 
-# Wait for the specified duration (2 seconds in this case)
-time.sleep(11)
+time.sleep(duration + 1)
 
-# Stop the process
-process.terminate()
+# Stop the recording by sending a SIGINT signal (Ctrl+C)
+process.send_signal(signal.SIGINT)
 
-# Optionally, wait for the process to end
+# Wait for the FFmpeg process to terminate
 process.wait()
+
+print("Recording stopped and file saved.")
 
 convert_aac_to_wav("output.aac", "output.wav")
 
@@ -80,25 +105,8 @@ outputs = response.choices[0].message.content # type: ignore
 
 print(outputs)
 
-#split outputs into a list of sentences
+#split outputs into a list of sentences (IDK if needed)
 sentences = outputs.split(".")
-
-# Zoom Closed Captioning API URL and Parameters
-zoom_cc_url = "https://wmcc.zoom.us/closedcaption"
-meeting_id = "3292661088"  # Meeting ID
-signature = "yXTYLaL6AgK9v9u84sLg7b4txOIKjMG_Mp49UEeRQTU.AG.U7VyvTmHYNLBl5BGAj0xP36wsixdZL_Tb3YU-cGCxlwE6Tp66Cg98Y1XF4_2Ffzs9csitlmLU5TtTjMcUA8LzkmnbZkVK0z7bzAHBonhGTgEXQ2b7hDQ-gqP_tvGpEkM-oQOkOv-qkxc9qQcrKBITj5RHqwgCps3F3mxvMl_aPrjOpfw0Bjj1PL7w8FleSngF0KQHUGQBjk.mW4zXwM6qP1oz2aVmWoX8w.zNPdltVUFClwLZUt"
-ns = "WXVuZyBDaGFrIEFuc29uIFRzYW5nJ3MgUGVyc29u"  # ns value
-expire = "108000"  # Expire value
-lang = "en-US"  # Language code
-
-# Function to send caption to Zoom
-def send_caption(seq, caption):
-    url = f"{zoom_cc_url}?id={meeting_id}&ns={ns}&expire={expire}&sparams=id%2Cns%2Cexpire&signature={signature}&seq={seq}&lang={lang}"
-    headers = {
-        'Content-Type': 'text/plain',
-    }
-    response = requests.post(url, headers=headers, data=caption.encode('utf-8'))
-    return response
 
 # List of captions to send
 # captions = [
