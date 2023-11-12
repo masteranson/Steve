@@ -16,14 +16,15 @@ load_dotenv(find_dotenv())
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 counter_file = 'counter.txt'
+system = "You are a converter that takes broken english and converts it to a normal sentence. Do not ouput anything other than the normal sentence. "
 
 ffmpeg_process = None
 
 # Zoom Closed Captioning API URL and Parameters
-zoom_link = "https://wmcc.zoom.us/closedcaption?id=94993538458&ns=QW1vZ2ggSm9zaGkncyBab29tIE1lZXRpbmc&expire=108000&sparams=id%2Cns%2Cexpire&signature=ZwTwDgxMhlrAP2Hl12fl3uBbf_QluSlCSfLVVEAVHmY.AG.hX8MelrhKsM80HVmGvvzxvMAGH7sPcj26s5KFvsOq9S5UFDUOoHCBQtN1v5sGP3lzEZiPSYi14Wbx62GNKCb0IpHnNU57qmbEvSVk85LSXCfobxyJXTf8jW7afcmiwEXCnrPhIQj9mp7OH56PQXAF1UbR-3SaMxoKAuJ149T3-TvZwaUZFzZvrxiLHrcJLGFWr3U.YpQskyk6f4xt9XgZoB0RLw.WeE13Zyit8QBt1Ze"
+zoom_link = "https://wmcc.zoom.us/closedcaption?id=3292661088&ns=WXVuZyBDaGFrIEFuc29uIFRzYW5nJ3MgUGVyc29u&expire=108000&sparams=id%2Cns%2Cexpire&signature=X6HZqat8ODAgMusWtwTmDABc-M5LusBtXXO-DFGZa1c.AG.temU98bNR2tqUkv0QuqyRNOGNGimieAY5FioOi2Ys2pEcTUC-edru3RIFe_WeNDNZy3P89kQYpKvdMaKTZ51SxrxfrWNZK5B7I0gN2LeB7d2CMnXVLXeMt9Gcz_yuRe21rImwbyV5bL1cZs3yb7cEkMek0Vun8AB7l-cZfb-boR2STSVyk9TZe4iRYCdVGp84aDGzLoZ3Mg._h6MorJdGb7pQz87DAQMuQ.qslpZMcJDmEcNiCb"
 zoom_cc_url = "https://wmcc.zoom.us/closedcaption"
 lang = "en-US"  # Language code
-ns = "WXVuZyBDaGFrIEFuc29uIFRzYW5nJ3MgUGVyc29u"  
+# ns = "WXVuZyBDaGFrIEFuc29uIFRzYW5nJ3MgUGVyc29u"  
 
 # parse the zoom link for the id, ns, signature, and expire
 
@@ -33,7 +34,7 @@ find_ns = re.search(r'ns=(\w+)', zoom_link)
 ns = find_ns.group(1)
 find_expire = re.search(r'expire=(\d+)', zoom_link)
 expire = find_expire.group(1)
-find_signature = re.search(r'signature=(\w+)', zoom_link)
+find_signature = re.search(r'signature=([^&]+)', zoom_link)
 signature = find_signature.group(1)
 
 
@@ -79,20 +80,6 @@ def start_ffmpeg():
 client = OpenAI(api_key = OPENAI_API_KEY)
 if os.path.exists('output.aac'):
     os.remove('output.aac')
-
-duration = 10 #Recording time
-
-# Define the FFmpeg command
-command = [
-    'ffmpeg', 
-    '-i', 'rtmp://localhost/live/ZOOM', 
-    '-vn', 
-    '-acodec', 'copy', 
-    'output.aac'
-]
-
-# Start the FFmpeg process
-process = subprocess.Popen(command)
 
 def stop_ffmpeg(process):
     process.send_signal(signal.SIGINT)
@@ -142,6 +129,7 @@ def on_release(key):
             model='gpt-4',
             messages=[system_prompt, user_prompt],
         )
+
         outputs = response.choices[0].message.content
         print('----------------------')
         print(outputs)
