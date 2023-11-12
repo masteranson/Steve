@@ -16,7 +16,8 @@ load_dotenv(find_dotenv())
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
 counter_file = 'counter.txt'
-system = "You are a converter that takes broken english and converts it to a normal sentence. Do not ouput anything other than the normal sentence. "
+
+keybinds = ["t", "d"]
 
 ffmpeg_process = None
 
@@ -89,7 +90,7 @@ def stop_ffmpeg(process):
 def on_press(key):
     global ffmpeg_process
     try:
-        if key.char == 't':  # Start recording on 't' key press
+        if keybinds.__contains__(str(key.char)):  # Start recording on valid key press
             if ffmpeg_process is None:  # Start FFmpeg if it's not already running
 
                 if os.path.exists("output.aac"):
@@ -101,55 +102,65 @@ def on_press(key):
 
 def on_release(key):
     global ffmpeg_process
-    if key.char == 't':  # Stop recording on 't' key release
-        if ffmpeg_process is not None:
-            time.sleep(0.1)  # Wait for 0.1 seconds
-            stop_ffmpeg(ffmpeg_process)
-            ffmpeg_process = None  # Reset the process
 
-        #Add the whisper and openai processing here
-        convert_aac_to_wav("output.aac", "output.wav")
-        #Add whisper processing here
-        client = OpenAI(api_key = OPENAI_API_KEY)
-        audio_file = open("output.wav", "rb")
-        transcript = client.audio.translations.create(
-        model="whisper-1", 
-        file=audio_file, 
-        response_format="text"
-        )
+    try:
+        if keybinds.__contains__(str(key.char)):  # Stop recording on valid key release
+            if ffmpeg_process is not None:
+                time.sleep(0.1)  # Wait for 0.1 seconds
+                stop_ffmpeg(ffmpeg_process)
+                ffmpeg_process = None  # Reset the process
 
-        print('----------------------')
-        print(transcript)
-        print('----------------------')
+            #Add the whisper and openai processing here
+            convert_aac_to_wav("output.aac", "output.wav")
+            #Add whisper processing here
+            client = OpenAI(api_key = OPENAI_API_KEY)
+            audio_file = open("output.wav", "rb")
+            transcript = client.audio.translations.create(
+            model="whisper-1", 
+            file=audio_file, 
+            response_format="text"
+            )
 
-        system_prompt = {'role': 'system', 'content': system}
-        user_prompt = {'role': 'user', 'content': transcript}
+            print('----------------------')
+            print(transcript)
+            print('----------------------')
 
-        response = client.chat.completions.create(
-            model='gpt-4',
-            messages=[system_prompt, user_prompt],
-        )
+            if key.char == "t":
+                system = "You are a converter that takes broken english and converts it to a normal, grammatically correct sentence. Do not ouput anything other than the normal sentence. "
+            elif key.char == "d":
+                system = "You are a dictionary. I will ask you to define an english word in a specific language and you will define it concisely, simply, and thoroughly in that language. Do not output anything more than the definition."
 
-        outputs = response.choices[0].message.content
-        print('----------------------')
-        print(outputs)
-        print('----------------------')
-        seq = read_counter(counter_file)
-        seq += 1
+            system_prompt = {'role': 'system', 'content': system}
+            user_prompt = {'role': 'user', 'content': transcript}
 
-        response = send_caption(seq, outputs)
-        if response.status_code == 200:
-            print(f"Caption {seq} sent successfully")
-        else:
-            print(f"Failed to send caption {seq}: {response.content}")
-        time.sleep(1)  # Pause for a second between captions
+            response = client.chat.completions.create(
+                model='gpt-4',
+                messages=[system_prompt, user_prompt],
+            )
 
-        write_counter(counter_file, seq)
+            outputs = response.choices[0].message.content
+            print('----------------------')
+            print(outputs)
+            print('----------------------')
+            seq = read_counter(counter_file)
+            seq += 1
 
-        
-        if key == keyboard.Key.esc:
-            return False  # Stop the listener
+            response = send_caption(seq, outputs)
+            if response.status_code == 200:
+                print(f"Caption {seq} sent successfully")
+            else:
+                print(f"Failed to send caption {seq}: {response.content}")
+            time.sleep(1)  # Pause for a second between captions
 
+            write_counter(counter_file, seq)
+
+            
+            if key == keyboard.Key.esc:
+                return False  # Stop the listener
+
+    except AttributeError:
+        pass
+    
 # Collect events until released
 with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
     listener.join()
