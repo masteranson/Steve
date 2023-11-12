@@ -1,9 +1,10 @@
 import requests
 import time
 import subprocess
-import json
+import signal
 import openai
 import os
+from pynput import keyboard
 from openai import OpenAI
 from pydub import AudioSegment
 from dotenv import load_dotenv, find_dotenv
@@ -13,17 +14,19 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
  
 counter_file = 'counter.txt'
 
+ffmpeg_process = None
+
 # Zoom Closed Captioning API URL and Parameters
 zoom_cc_url = "https://wmcc.zoom.us/closedcaption"
 meeting_id = "3292661088"  # Meeting ID
 expire = "108000"  # Expire value
 lang = "en-US"  # Language code
-
-#This gets updated at every new meeeting from myself
-signature = "yXTYLaL6AgK9v9u84sLg7b4txOIKjMG_Mp49UEeRQTU.AG.U7VyvTmHYNLBl5BGAj0xP36wsixdZL_Tb3YU-cGCxlwE6Tp66Cg98Y1XF4_2Ffzs9csitlmLU5TtTjMcUA8LzkmnbZkVK0z7bzAHBonhGTgEXQ2b7hDQ-gqP_tvGpEkM-oQOkOv-qkxc9qQcrKBITj5RHqwgCps3F3mxvMl_aPrjOpfw0Bjj1PL7w8FleSngF0KQHUGQBjk.mW4zXwM6qP1oz2aVmWoX8w.zNPdltVUFClwLZUt"
 ns = "WXVuZyBDaGFrIEFuc29uIFRzYW5nJ3MgUGVyc29u"  
 
+#This gets updated at every new meeeting from myself
+signature = "X6HZqat8ODAgMusWtwTmDABc-M5LusBtXXO-DFGZa1c.AG.temU98bNR2tqUkv0QuqyRNOGNGimieAY5FioOi2Ys2pEcTUC-edru3RIFe_WeNDNZy3P89kQYpKvdMaKTZ51SxrxfrWNZK5B7I0gN2LeB7d2CMnXVLXeMt9Gcz_yuRe21rImwbyV5bL1cZs3yb7cEkMek0Vun8AB7l-cZfb-boR2STSVyk9TZe4iRYCdVGp84aDGzLoZ3Mg._h6MorJdGb7pQz87DAQMuQ.qslpZMcJDmEcNiCb"
 
+system = "You are a converter that takes broken english and converts it to a normal sentence. Do not ouput anything other than the full sentence. "
 
 # Converts AAC file to WAV
 def convert_aac_to_wav(aac_file_path, wav_file_path):
@@ -54,83 +57,88 @@ def send_caption(seq, caption):
     response = requests.post(url, headers=headers, data=caption.encode('utf-8'))
     return response
 
+def start_ffmpeg():
+    command = [
+        'ffmpeg', 
+        '-i', 'rtmp://localhost/live/ZOOM', 
+        '-vn', 
+        '-acodec', 'copy', 
+        'output.aac'
+    ]
+    return subprocess.Popen(command)
 
-client = OpenAI(api_key = OPENAI_API_KEY)
-os.remove('output.aac')
+def stop_ffmpeg(process):
+    process.send_signal(signal.SIGINT)
+    process.wait()
+    print("Recording stopped and file saved.")
 
-duration = 10 #Recording time
+def on_press(key):
+    global ffmpeg_process
+    try:
+        if key.char == 't':  # Start recording on 't' key press
+            if ffmpeg_process is None:  # Start FFmpeg if it's not already running
 
-# Define the FFmpeg command
-command = [
-    'ffmpeg', 
-    '-i', 'rtmp://localhost/live/ZOOM', 
-    '-vn', 
-    '-acodec', 'copy', 
-    'output69.aac'
-]
+                if os.path.exists("output.aac"):
+                    os.remove("output.aac")
 
-# Start the FFmpeg process
-process = subprocess.Popen(command)
+                ffmpeg_process = start_ffmpeg()
+    except AttributeError:
+        pass
 
-time.sleep(duration + 1)
+def on_release(key):
+    global ffmpeg_process
+    if key.char == 't':  # Stop recording on 't' key release
+        if ffmpeg_process is not None:
+            time.sleep(0.1)  # Wait for 0.1 seconds
+            stop_ffmpeg(ffmpeg_process)
+            ffmpeg_process = None  # Reset the process
 
-# Stop the recording by sending a SIGINT signal (Ctrl+C)
-process.send_signal(signal.SIGINT)
+        #Add the whisper and openai processing here
+        convert_aac_to_wav("output.aac", "output.wav")
+        #Add whisper processing here
+        client = OpenAI(api_key = OPENAI_API_KEY)
+        audio_file = open("output.wav", "rb")
+        transcript = client.audio.translations.create(
+        model="whisper-1", 
+        file=audio_file, 
+        response_format="text"
+        )
 
-# Wait for the FFmpeg process to terminate
-process.wait()
+        print('----------------------')
+        print(transcript)
+        print('----------------------')
 
-print("Recording stopped and file saved.")
+        system_prompt = {'role': 'system', 'content': system}
+        user_prompt = {'role': 'user', 'content': transcript}
 
-convert_aac_to_wav("output.aac", "output.wav")
+        response = client.chat.completions.create(
+            model='gpt-4',
+            messages=[system_prompt, user_prompt],
+        )
+        outputs = response.choices[0].message.content
+        print('----------------------')
+        print(outputs)
+        print('----------------------')
+        seq = read_counter(counter_file)
+        seq += 1
 
-#Add whisper processing here
-audio_file = open("output.wav", "rb")
-transcript = client.audio.translations.create(
-  model="whisper-1", 
-  file=audio_file, 
-  response_format="text"
-)
+        response = send_caption(seq, outputs)
+        if response.status_code == 200:
+            print(f"Caption {seq} sent successfully")
+        else:
+            print(f"Failed to send caption {seq}: {response.content}")
+        time.sleep(1)  # Pause for a second between captions
 
-system = "You are a converter that takes broken english and converts it to a normal sentence. Do not ouput anything other than the full sentence. "
+        write_counter(counter_file, seq)
 
-system_prompt = {'role': 'system', 'content': system}
-user_prompt = {'role': 'user', 'content': transcript}
+        
+        if key == keyboard.Key.esc:
+            return False  # Stop the listener
 
-response = client.chat.completions.create(
-    model='gpt-4',
-    messages=[system_prompt, user_prompt],
-)
-outputs = response.choices[0].message.content # type: ignore
+# Collect events until released
+with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+    listener.join()
 
-print(outputs)
 
-#split outputs into a list of sentences (IDK if needed)
-sentences = outputs.split(".")
 
-# List of captions to send
-# captions = [
-#     "Big COCK.",
-#     "BIGGER COCK",
-#     "BIGGEST COCK."
-# ]
-# captions = sentences
-captions = [outputs,]
 
-# Sending Captions
-
-seq = read_counter(counter_file)
-seq += 1
-
-# print(f"Current counter value: {counter}")
-
-for caption in captions:
-    seq += 1
-    response = send_caption(seq, caption)
-    if response.status_code == 200:
-        print(f"Caption {seq} sent successfully")
-    else:
-        print(f"Failed to send caption {seq}: {response.content}")
-    time.sleep(1)  # Pause for a second between captions
-
-write_counter(counter_file, seq)
